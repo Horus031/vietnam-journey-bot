@@ -34,7 +34,7 @@ const DEFAULT_PALETTE = [
 
 const MapView: React.FC<MapViewProps> = ({
   points = [],
-  initialCoordinates = [105.8, 21.02],
+  initialCoordinates = [108.2772, 14.0583], // Vietnam center [lng, lat]
   initialZoom = 5,
   className,
 }) => {
