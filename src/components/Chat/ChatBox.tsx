@@ -12,7 +12,7 @@ interface ChatBoxProps {
   setMapData: React.Dispatch<React.SetStateAction<MapPoint[]>>;
 }
 
-const ChatBox: React.FC<ChatBoxProps> = ({ mapData, setMapData }) => {
+const ChatBox: React.FC<ChatBoxProps> = ({ setMapData }) => {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -195,14 +195,14 @@ const ChatBox: React.FC<ChatBoxProps> = ({ mapData, setMapData }) => {
       </div>
 
       {/* 👇 Tạm hiển thị dữ liệu bản đồ để debug */}
-      {mapData.length > 0 && (
+      {/* {mapData.length > 0 && (
         <div className="p-4 text-sm border-t bg-gray-50 max-h-40 overflow-y-auto">
           <strong>Dữ liệu bản đồ:</strong>
           <pre className="text-xs whitespace-pre-wrap">
             {JSON.stringify(mapData, null, 2)}
           </pre>
         </div>
-      )}
+      )} */}
     </div>
   );
 };
