@@ -12,7 +12,7 @@ const HomePage = () => {
       <div className="flex-1 p-3 h-full">
         <MapView points={mapData} />
       </div>
-      <div className="lg:w-[30%] lg:hidden lg:static lg:h-full absolute bottom-0 h-72 md:h-96  block p-3">
+      <div className="lg:w-[30%] lg:hidden lg:static lg:h-full absolute bottom-0 h-72 md:h-96  block p-3 w-full">
         <ChatBox mapData={mapData} setMapData={setMapData} />
       </div>
     </div>
