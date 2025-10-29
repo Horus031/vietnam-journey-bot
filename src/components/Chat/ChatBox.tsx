@@ -142,9 +142,9 @@ const ChatBox: React.FC<ChatBoxProps> = ({ setMapData }) => {
 
   return (
     <div className="flex flex-col h-full bg-white shadow-lg rounded-xl">
-      <div className="p-4 font-bold border-b">Vietnam Journey Bot</div>
+      <div className="p-4 font-bold border-b z-3">Vietnam Journey Bot</div>
 
-      <div ref={listRef} className="flex-1 p-4 overflow-y-auto space-y-3">
+      <div ref={listRef} className="flex-1 p-4 overflow-y-scroll space-y-3 my-1">
         {messages.map((msg, i) => (
           <div
             key={i}

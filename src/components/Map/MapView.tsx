@@ -188,7 +188,12 @@ const MapView: React.FC<MapViewProps> = ({
     const rawLng = parse(p.lng);
 
     if (isNaN(rawLat) || isNaN(rawLng)) {
-      console.warn("MapView: invalid coords for", p.name, { rawLat: p.lat, rawLng: p.lng, parsedLat: rawLat, parsedLng: rawLng });
+      console.warn("MapView: invalid coords for", p.name, {
+        rawLat: p.lat,
+        rawLng: p.lng,
+        parsedLat: rawLat,
+        parsedLng: rawLng,
+      });
       return { lat: rawLat || 0, lng: rawLng || 0 };
     }
 
@@ -198,7 +203,12 @@ const MapView: React.FC<MapViewProps> = ({
     if (Math.abs(rawLat) > 90 && Math.abs(rawLng) <= 90) {
       finalLat = rawLng;
       finalLng = rawLat;
-      console.debug("MapView: swapped lat/lng (heuristic) for", p.name, { rawLat, rawLng, finalLat, finalLng });
+      console.debug("MapView: swapped lat/lng (heuristic) for", p.name, {
+        rawLat,
+        rawLng,
+        finalLat,
+        finalLng,
+      });
     } else {
       // Heuristic for Vietnam: lat roughly between 6..24, lng roughly between 102..110
       const looksLikeLat = (v: number) => v >= 6 && v <= 30;
@@ -207,7 +217,11 @@ const MapView: React.FC<MapViewProps> = ({
         // looks swapped
         finalLat = rawLng;
         finalLng = rawLat;
-        console.debug("MapView: swapped lat/lng based on VN heuristics for", p.name, { rawLat, rawLng, finalLat, finalLng });
+        console.debug(
+          "MapView: swapped lat/lng based on VN heuristics for",
+          p.name,
+          { rawLat, rawLng, finalLat, finalLng }
+        );
       }
     }
 
@@ -239,27 +253,6 @@ const MapView: React.FC<MapViewProps> = ({
     ];
   };
 
-  // try to get a boundary polygon from Nominatim (OSM) by name (restricted to Vietnam)
-  // const fetchBoundaryFromNominatim = async (p: MapPoint) => {
-  //   try {
-  //     const q = encodeURIComponent(p.name);
-  //     // format=jsonv2 returns geojson in `geojson` field when polygon_geojson=1
-  //     const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${q}&polygon_geojson=1&limit=1&countrycodes=vn`;
-  //     const res = await fetch(url, { headers: { Accept: "application/json" } });
-  //     if (!res.ok) return null;
-  //     const arr = await res.json();
-  //     if (!Array.isArray(arr) || arr.length === 0) return null;
-  //     const first = arr[0];
-  //     if (first?.geojson) {
-  //       // geojson can be Polygon or MultiPolygon or Geometry
-  //       return first.geojson as GeoJSON.Geometry;
-  //     }
-  //   } catch (e) {
-  //     console.warn("Boundary fetch failed for", p.name, e);
-  //   }
-  //   return null;
-  // };
-
   const fetchBoundaryFromNominatim = async (p: MapPoint) => {
     try {
       const q = encodeURIComponent(p.name);
@@ -283,15 +276,29 @@ const MapView: React.FC<MapViewProps> = ({
       };
 
       const arr = raw as unknown[];
-      const results: NominatimResult[] = arr.filter((x): x is NominatimResult => typeof x === "object" && x !== null) as NominatimResult[];
+      const results: NominatimResult[] = arr.filter(
+        (x): x is NominatimResult => typeof x === "object" && x !== null
+      ) as NominatimResult[];
 
       // Prefer results that include polygon geojson first
-      let candidate = results.find((r) => r.geojson && (r.geojson.type === "Polygon" || r.geojson.type === "MultiPolygon"));
+      let candidate = results.find(
+        (r) =>
+          r.geojson &&
+          (r.geojson.type === "Polygon" || r.geojson.type === "MultiPolygon")
+      );
 
       // If none has polygon, prefer entries whose class indicates a place-area (tourism, natural, landuse, leisure, historic)
       if (!candidate) {
-        const preferred = ["tourism", "natural", "landuse", "leisure", "historic"];
-        candidate = results.find((r) => r.class !== undefined && preferred.includes(String(r.class)));
+        const preferred = [
+          "tourism",
+          "natural",
+          "landuse",
+          "leisure",
+          "historic",
+        ];
+        candidate = results.find(
+          (r) => r.class !== undefined && preferred.includes(String(r.class))
+        );
       }
 
       // As further fallback pick the result with largest bounding box area (more likely to be the area, not a single POI)
@@ -318,7 +325,11 @@ const MapView: React.FC<MapViewProps> = ({
       const first = candidate;
 
       // If candidate has polygon geojson, return it
-      if (first?.geojson && (first.geojson.type === "Polygon" || first.geojson.type === "MultiPolygon")) {
+      if (
+        first?.geojson &&
+        (first.geojson.type === "Polygon" ||
+          first.geojson.type === "MultiPolygon")
+      ) {
         return first.geojson as GeoJSON.Geometry;
       }
 
@@ -326,16 +337,30 @@ const MapView: React.FC<MapViewProps> = ({
       const osm_type = first?.osm_type; // e.g. "relation","way","node"
       const osm_id = first?.osm_id;
       if (osm_type && osm_id) {
-        const mapType: Record<string, string> = { relation: "R", way: "W", node: "N" };
-        const osmTypeLetter = mapType[String(osm_type).toLowerCase()] ?? String(osm_type).charAt(0).toUpperCase();
+        const mapType: Record<string, string> = {
+          relation: "R",
+          way: "W",
+          node: "N",
+        };
+        const osmTypeLetter =
+          mapType[String(osm_type).toLowerCase()] ??
+          String(osm_type).charAt(0).toUpperCase();
         const detailsUrl = `https://nominatim.openstreetmap.org/details.php?osmtype=${osmTypeLetter}&osmid=${osm_id}&format=json&polygon_geojson=1`;
         const detailsRes = await fetch(detailsUrl, { headers });
         if (detailsRes.ok) {
           const details = await detailsRes.json();
-          if (details?.geojson && (details.geojson.type === "Polygon" || details.geojson.type === "MultiPolygon")) {
+          if (
+            details?.geojson &&
+            (details.geojson.type === "Polygon" ||
+              details.geojson.type === "MultiPolygon")
+          ) {
             return details.geojson as GeoJSON.Geometry;
           }
-          if (details?.polygon_geojson && (details.polygon_geojson.type === "Polygon" || details.polygon_geojson.type === "MultiPolygon")) {
+          if (
+            details?.polygon_geojson &&
+            (details.polygon_geojson.type === "Polygon" ||
+              details.polygon_geojson.type === "MultiPolygon")
+          ) {
             return details.polygon_geojson as GeoJSON.Geometry;
           }
         }
@@ -450,96 +475,86 @@ const MapView: React.FC<MapViewProps> = ({
     const updateMapView = async () => {
       setMapLoading(true);
       try {
-      // If multi-day journey, we no longer use "all" — show only active day
-      const activePoints: MapPoint[] =
-        selectedDay === "all"
-          ? points.length === 1
-            ? points
-            : points.filter((p) => p.day === points[0].day)
-          : points.filter((p) => p.day === selectedDay);
+        // If multi-day journey, we no longer use "all" — show only active day
+        const activePoints: MapPoint[] =
+          selectedDay === "all"
+            ? points.length === 1
+              ? points
+              : points.filter((p) => p.day === points[0].day)
+            : points.filter((p) => p.day === selectedDay);
 
-      clearOutlineLayers();
-      clearMarkers();
+        clearOutlineLayers();
+        clearMarkers();
 
-      if (activePoints.length === 0) {
-        mp.flyTo({ center: initialCoordinates, zoom: initialZoom });
-        return;
-      }
-
-      // we'll compute a combined bounds so fit can zoom appropriately (closer if bbox small)
-      let combinedBounds: mapboxgl.LngLatBounds | null = null;
-
-      // sequentially process points (safer re: external requests)
-      for (let idx = 0; idx < activePoints.length; idx++) {
-        const p0 = activePoints[idx];
-        // normalize coordinates (fix swapped lat/lng from upstream if any)
-        const { lat, lng } = normalizeLatLng(p0);
-
-        const el = document.createElement("div");
-        el.className = "map-marker";
-        el.style.width = "12px";
-        el.style.height = "12px";
-        el.style.borderRadius = "50%";
-        el.style.background = "#fff";
-        el.style.border = `2px solid ${
-          DEFAULT_PALETTE[idx % DEFAULT_PALETTE.length]
-        }`;
-        el.style.boxShadow = "0 0 6px rgba(0,0,0,0.12)";
-        el.title = p0.name ?? "";
-
-        const marker = new mapboxgl.Marker({ element: el })
-          .setLngLat([lng, lat]) // use normalized order [lng, lat]
-          .addTo(mp);
-        markers.current.push(marker);
-
-        const popupEl = document.createElement("div");
-        popupEl.style.fontSize = "13px";
-        const titleEl = document.createElement("div");
-        titleEl.style.fontWeight = "600";
-        titleEl.style.marginBottom = "4px";
-        titleEl.textContent = p0.name ?? "";
-        popupEl.appendChild(titleEl);
-        if (p0.desc) {
-          const descEl = document.createElement("div");
-          descEl.style.marginBottom = "6px";
-          descEl.textContent = p0.desc;
-          popupEl.appendChild(descEl);
+        if (activePoints.length === 0) {
+          mp.flyTo({ center: initialCoordinates, zoom: initialZoom });
+          return;
         }
-        if (p0.source) {
-          const linkEl = document.createElement("a");
-          linkEl.href = p0.source;
-          linkEl.target = "_blank";
-          linkEl.rel = "noreferrer";
-          linkEl.style.color = "#1d4ed8";
-          linkEl.style.textDecoration = "underline";
-          linkEl.textContent = "Nguồn đọc thêm";
-          popupEl.appendChild(linkEl);
-        }
-        const popup = new mapboxgl.Popup({ offset: 10 }).setDOMContent(popupEl);
-        marker.setPopup(popup);
 
-        let geometry: GeoJSON.Geometry | null = null;
-        if (p0.geojson) {
-          const gj = p0.geojson as unknown;
-          // FeatureCollection
-          if (typeof gj === "object" && gj !== null && "type" in gj && (gj as { type?: unknown }).type === "FeatureCollection") {
-            const fc = gj as GeoJSON.FeatureCollection;
-            const polyFeat = fc.features?.find(
-              (f) =>
-                !!f.geometry &&
-                (f.geometry.type === "Polygon" ||
-                  f.geometry.type === "MultiPolygon" ||
-                  f.geometry.type === "MultiLineString" ||
-                  f.geometry.type === "LineString")
-            );
-            if (polyFeat) geometry = polyFeat.geometry;
-            else if (fc.features && fc.features[0] && fc.features[0].geometry) geometry = fc.features[0].geometry;
-          } else if (typeof gj === "object" && gj !== null && "type" in gj) {
-            // plain geometry with type
-            geometry = gj as GeoJSON.Geometry;
-          } else if (typeof gj === "object" && gj !== null && "features" in gj) {
-            const maybe = gj as { features?: unknown };
-            if (Array.isArray(maybe.features)) {
+        // we'll compute a combined bounds so fit can zoom appropriately (closer if bbox small)
+        let combinedBounds: mapboxgl.LngLatBounds | null = null;
+
+        // sequentially process points (safer re: external requests)
+        for (let idx = 0; idx < activePoints.length; idx++) {
+          const p0 = activePoints[idx];
+          // normalize coordinates (fix swapped lat/lng from upstream if any)
+          const { lat, lng } = normalizeLatLng(p0);
+
+          const el = document.createElement("div");
+          el.className = "map-marker";
+          el.style.width = "12px";
+          el.style.height = "12px";
+          el.style.borderRadius = "50%";
+          el.style.background = "#fff";
+          el.style.border = `2px solid ${
+            DEFAULT_PALETTE[idx % DEFAULT_PALETTE.length]
+          }`;
+          el.style.boxShadow = "0 0 6px rgba(0,0,0,0.12)";
+          el.title = p0.name ?? "";
+
+          const marker = new mapboxgl.Marker({ element: el })
+            .setLngLat([lng, lat]) // use normalized order [lng, lat]
+            .addTo(mp);
+          markers.current.push(marker);
+
+          const popupEl = document.createElement("div");
+          popupEl.style.fontSize = "13px";
+          const titleEl = document.createElement("div");
+          titleEl.style.fontWeight = "600";
+          titleEl.style.marginBottom = "4px";
+          titleEl.textContent = p0.name ?? "";
+          popupEl.appendChild(titleEl);
+          if (p0.desc) {
+            const descEl = document.createElement("div");
+            descEl.style.marginBottom = "6px";
+            descEl.textContent = p0.desc;
+            popupEl.appendChild(descEl);
+          }
+          if (p0.source) {
+            const linkEl = document.createElement("a");
+            linkEl.href = p0.source;
+            linkEl.target = "_blank";
+            linkEl.rel = "noreferrer";
+            linkEl.style.color = "#1d4ed8";
+            linkEl.style.textDecoration = "underline";
+            linkEl.textContent = "Nguồn đọc thêm";
+            popupEl.appendChild(linkEl);
+          }
+          const popup = new mapboxgl.Popup({ offset: 10 }).setDOMContent(
+            popupEl
+          );
+          marker.setPopup(popup);
+
+          let geometry: GeoJSON.Geometry | null = null;
+          if (p0.geojson) {
+            const gj = p0.geojson as unknown;
+            // FeatureCollection
+            if (
+              typeof gj === "object" &&
+              gj !== null &&
+              "type" in gj &&
+              (gj as { type?: unknown }).type === "FeatureCollection"
+            ) {
               const fc = gj as GeoJSON.FeatureCollection;
               const polyFeat = fc.features?.find(
                 (f) =>
@@ -550,69 +565,142 @@ const MapView: React.FC<MapViewProps> = ({
                     f.geometry.type === "LineString")
               );
               if (polyFeat) geometry = polyFeat.geometry;
+              else if (fc.features && fc.features[0] && fc.features[0].geometry)
+                geometry = fc.features[0].geometry;
+            } else if (typeof gj === "object" && gj !== null && "type" in gj) {
+              // plain geometry with type
+              geometry = gj as GeoJSON.Geometry;
+            } else if (
+              typeof gj === "object" &&
+              gj !== null &&
+              "features" in gj
+            ) {
+              const maybe = gj as { features?: unknown };
+              if (Array.isArray(maybe.features)) {
+                const fc = gj as GeoJSON.FeatureCollection;
+                const polyFeat = fc.features?.find(
+                  (f) =>
+                    !!f.geometry &&
+                    (f.geometry.type === "Polygon" ||
+                      f.geometry.type === "MultiPolygon" ||
+                      f.geometry.type === "MultiLineString" ||
+                      f.geometry.type === "LineString")
+                );
+                if (polyFeat) geometry = polyFeat.geometry;
+              }
             }
           }
-        }
 
-        if (!geometry) {
-          geometry = await fetchBoundaryFromNominatim(p0);
-        }
+          if (!geometry) {
+            geometry = await fetchBoundaryFromNominatim(p0);
+          }
 
-        const color = DEFAULT_PALETTE[idx % DEFAULT_PALETTE.length];
-        const srcId = `outline-${p0.day ?? 0}-${idx}-${slug(p0.name)}`;
-        outlinesRef.current.set(srcId, geometry ?? null);
+          const color = DEFAULT_PALETTE[idx % DEFAULT_PALETTE.length];
+          const srcId = `outline-${p0.day ?? 0}-${idx}-${slug(p0.name)}`;
+          outlinesRef.current.set(srcId, geometry ?? null);
 
-        if (
-          geometry &&
-          (geometry.type === "Polygon" ||
-            geometry.type === "MultiPolygon" ||
-            geometry.type === "LineString" ||
-            geometry.type === "MultiLineString")
-        ) {
-          const feat: GeoJSON.Feature = {
-            type: "Feature",
-            properties: {},
-            geometry: geometry as GeoJSON.Geometry,
-          };
+          if (
+            geometry &&
+            (geometry.type === "Polygon" ||
+              geometry.type === "MultiPolygon" ||
+              geometry.type === "LineString" ||
+              geometry.type === "MultiLineString")
+          ) {
+            const feat: GeoJSON.Feature = {
+              type: "Feature",
+              properties: {},
+              geometry: geometry as GeoJSON.Geometry,
+            };
 
-          if (!mp.getSource(srcId)) {
-            mp.addSource(srcId, { type: "geojson", data: feat });
+            if (!mp.getSource(srcId)) {
+              mp.addSource(srcId, { type: "geojson", data: feat });
+            } else {
+              (mp.getSource(srcId) as mapboxgl.GeoJSONSource).setData(feat);
+            }
+
+            const fillId = `${srcId}-fill`;
+            if (!mp.getLayer(fillId)) {
+              mp.addLayer({
+                id: fillId,
+                type: "fill",
+                source: srcId,
+                paint: {
+                  "fill-color": color,
+                  "fill-opacity": 0.06,
+                },
+              });
+            }
+
+            const lineId = `${srcId}-line`;
+            if (!mp.getLayer(lineId)) {
+              mp.addLayer({
+                id: lineId,
+                type: "line",
+                source: srcId,
+                layout: { "line-join": "round", "line-cap": "round" },
+                paint: {
+                  "line-color": color,
+                  "line-width": 2,
+                  "line-dasharray": [4, 4],
+                  "line-opacity": 0.95,
+                },
+              });
+            }
+
+            const b = geometryBBox(geometry);
+            if (b) {
+              const expanded = expandBBox(b, 0.06);
+              if (!combinedBounds) {
+                combinedBounds = new mapboxgl.LngLatBounds(
+                  [expanded[0], expanded[1]],
+                  [expanded[2], expanded[3]]
+                );
+              } else {
+                combinedBounds.extend([expanded[0], expanded[1]]);
+                combinedBounds.extend([expanded[2], expanded[3]]);
+              }
+            } else {
+              if (!combinedBounds)
+                combinedBounds = new mapboxgl.LngLatBounds(
+                  [lng, lat],
+                  [lng, lat]
+                );
+              else combinedBounds.extend([lng, lat]);
+            }
           } else {
-            (mp.getSource(srcId) as mapboxgl.GeoJSONSource).setData(feat);
-          }
+            // fallback circle around normalized point
+            const feature = makeCircle(lng, lat, 2000); // slightly smaller radius
+            if (!mp.getSource(srcId)) {
+              mp.addSource(srcId, { type: "geojson", data: feature });
+            } else {
+              (mp.getSource(srcId) as mapboxgl.GeoJSONSource).setData(feature);
+            }
 
-          const fillId = `${srcId}-fill`;
-          if (!mp.getLayer(fillId)) {
-            mp.addLayer({
-              id: fillId,
-              type: "fill",
-              source: srcId,
-              paint: {
-                "fill-color": color,
-                "fill-opacity": 0.06,
-              },
-            });
-          }
+            const layerId = `${srcId}-line`;
+            if (!mp.getLayer(layerId)) {
+              mp.addLayer({
+                id: layerId,
+                type: "line",
+                source: srcId,
+                layout: { "line-join": "round", "line-cap": "round" },
+                paint: {
+                  "line-color": color,
+                  "line-width": 2,
+                  "line-dasharray": [4, 4],
+                  "line-opacity": 0.95,
+                },
+              });
+            }
 
-          const lineId = `${srcId}-line`;
-          if (!mp.getLayer(lineId)) {
-            mp.addLayer({
-              id: lineId,
-              type: "line",
-              source: srcId,
-              layout: { "line-join": "round", "line-cap": "round" },
-              paint: {
-                "line-color": color,
-                "line-width": 2,
-                "line-dasharray": [4, 4],
-                "line-opacity": 0.95,
-              },
-            });
-          }
-
-          const b = geometryBBox(geometry);
-          if (b) {
-            const expanded = expandBBox(b, 0.06);
+            // expand small box around point to allow close zoom but still keep outline near edge
+            const delta = 0.008; // smaller than previous 0.02 for closer zoom
+            const circB: [number, number, number, number] = [
+              lng - delta,
+              lat - delta,
+              lng + delta,
+              lat + delta,
+            ];
+            const expanded = expandBBox(circB, 0.04);
             if (!combinedBounds) {
               combinedBounds = new mapboxgl.LngLatBounds(
                 [expanded[0], expanded[1]],
@@ -622,70 +710,19 @@ const MapView: React.FC<MapViewProps> = ({
               combinedBounds.extend([expanded[0], expanded[1]]);
               combinedBounds.extend([expanded[2], expanded[3]]);
             }
-          } else {
-            if (!combinedBounds)
-              combinedBounds = new mapboxgl.LngLatBounds(
-                [lng, lat],
-                [lng, lat]
-              );
-            else combinedBounds.extend([lng, lat]);
-          }
-        } else {
-          // fallback circle around normalized point
-          const feature = makeCircle(lng, lat, 2000); // slightly smaller radius
-          if (!mp.getSource(srcId)) {
-            mp.addSource(srcId, { type: "geojson", data: feature });
-          } else {
-            (mp.getSource(srcId) as mapboxgl.GeoJSONSource).setData(feature);
-          }
-
-          const layerId = `${srcId}-line`;
-          if (!mp.getLayer(layerId)) {
-            mp.addLayer({
-              id: layerId,
-              type: "line",
-              source: srcId,
-              layout: { "line-join": "round", "line-cap": "round" },
-              paint: {
-                "line-color": color,
-                "line-width": 2,
-                "line-dasharray": [4, 4],
-                "line-opacity": 0.95,
-              },
-            });
-          }
-
-          // expand small box around point to allow close zoom but still keep outline near edge
-          const delta = 0.008; // smaller than previous 0.02 for closer zoom
-          const circB: [number, number, number, number] = [
-            lng - delta,
-            lat - delta,
-            lng + delta,
-            lat + delta,
-          ];
-          const expanded = expandBBox(circB, 0.04);
-          if (!combinedBounds) {
-            combinedBounds = new mapboxgl.LngLatBounds(
-              [expanded[0], expanded[1]],
-              [expanded[2], expanded[3]]
-            );
-          } else {
-            combinedBounds.extend([expanded[0], expanded[1]]);
-            combinedBounds.extend([expanded[2], expanded[3]]);
           }
         }
-      }
 
-      // Fit bounds or flyTo with closer zoom and reduced padding so outlines are near edges
-      if (combinedBounds) {
-        mp.fitBounds(combinedBounds, { padding: 60, maxZoom: 17 });
-      } else if (activePoints.length === 1) {
-        const p0 = activePoints[0];
-        const { lat, lng } = normalizeLatLng(p0);
-        mp.flyTo({ center: [lng, lat], zoom: 16, speed: 0.8 });
-      } else {
-        fitToPoints(activePoints, 80, 16);
-      }
+        // Fit bounds or flyTo with closer zoom and reduced padding so outlines are near edges
+        if (combinedBounds) {
+          mp.fitBounds(combinedBounds, { padding: 60, maxZoom: 17 });
+        } else if (activePoints.length === 1) {
+          const p0 = activePoints[0];
+          const { lat, lng } = normalizeLatLng(p0);
+          mp.flyTo({ center: [lng, lat], zoom: 16, speed: 0.8 });
+        } else {
+          fitToPoints(activePoints, 80, 16);
+        }
       } finally {
         setMapLoading(false);
       }
@@ -713,7 +750,7 @@ const MapView: React.FC<MapViewProps> = ({
 
     // match srcId used when rendering outlines (best effort)
     const idx = typeof preferIdx === "number" ? preferIdx : 0;
-  const srcId = `outline-${p.day ?? 0}-${idx}-${slug(p.name)}`;
+    const srcId = `outline-${p.day ?? 0}-${idx}-${slug(p.name)}`;
     const geom = outlinesRef.current.get(srcId) ?? null;
 
     if (geom) {
@@ -876,7 +913,7 @@ const MapView: React.FC<MapViewProps> = ({
 
         {/* Blocking loading overlay shown while fetching boundaries or when the map is moving */}
         {mapLoading && (
-          <div className="absolute inset-0 z-60 flex items-center justify-center bg-black/50 pointer-events-none">
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 pointer-events-none user-select-none">
             <div className="flex flex-col items-center pointer-events-none p-4 rounded">
               <div className="w-10 h-10 border-4 border-gray-200 border-t-blue-500 rounded-full animate-spin" />
               <div className="mt-2 text-sm text-white">Đang tải bản đồ...</div>
