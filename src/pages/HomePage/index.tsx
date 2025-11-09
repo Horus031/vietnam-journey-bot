@@ -6,7 +6,7 @@ const HomePage = () => {
   const [mapData, setMapData] = useState<MapPoint[]>([]);
   return (
     <div className="flex flex-col h-screen lg:flex-row">
-      <div className="lg:w-[30%] hidden lg:block p-3">
+      <div className="lg:w-[30%] hidden lg:block rounded-tr-lg rounded-br-lg">
         <ChatBox mapData={mapData} setMapData={setMapData} />
       </div>
       <div className="flex-1 p-3 h-full">

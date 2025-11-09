@@ -12,6 +12,7 @@
   "dependencies": {
     "@tailwindcss/vite": "^4.1.16",
     "axios": "^1.13.0",
+    "lucide-react": "^0.553.0",
     "mapbox-gl": "^3.16.0",
     "openai": "^6.7.0",
     "react": "^19.1.1",

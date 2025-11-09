@@ -1,1 +1,23 @@
+@import url("https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Public+Sans:ital,wght@0,100..900;1,100..900&family=Roboto:ital,wght@0,100..900;1,100..900&display=swap");
 @import "tailwindcss";
+
+@layer base {
+    :root{
+        --font-public-sans: "Public Sans", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        --font-roboto: "Roboto", system-ui, -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+        --font-geist: "Geist", system-ui, -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    }
+
+    /* default site font */
+    html { font-family: var(--font-public-sans); }
+
+    /* use Geist for headings by default (optional) */
+    h1,h2,h3,h4,h5,h6 { font-family: var(--font-geist); }
+}
+
+@layer utilities {
+    /* utility classes to opt into each font */
+    .font-public-sans { font-family: var(--font-public-sans) !important; }
+    .font-roboto { font-family: var(--font-roboto) !important; }
+    .font-geist { font-family: var(--font-geist) !important; }
+}

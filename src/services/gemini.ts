@@ -25,6 +25,9 @@ export async function askJourneyBot(
                 "name": "Tên địa điểm", "lat": số (đảm bảo lấy chính xác), "lng": số (đảm bảo lấy chính xác), "desc": "Mô tả ngắn", "source": "Nguồn để đọc thêm (ưu tiên Wikipedia)"
                 }
             ]
+            // Optional: Và trả về ngân sách ước tính cho chuyến du lịch.
+            // Nên trả về ngân sách cho từng ngày nếu có thể.
+            // Ngân sách có thể là số (VND) hoặc một object như { "total": 1200000, "currency": "VND", "perPerson": 400000 }
         },
         ...
     ]

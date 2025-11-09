@@ -4,6 +4,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize from "rehype-sanitize";
 import type { MapPoint } from "../Map/MapView";
+import { MapPin, SendHorizonal } from "lucide-react";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
@@ -50,11 +51,29 @@ const ChatBox: React.FC<ChatBoxProps> = ({ setMapData }) => {
           if (v === null || v === undefined) return 0;
           if (typeof v === "number") return v;
           let s = String(v).trim();
-          if (s.indexOf(".") >= 0 && s.indexOf(",") >= 0) s = s.replace(/,/g, "");
+          if (s.indexOf(".") >= 0 && s.indexOf(",") >= 0)
+            s = s.replace(/,/g, "");
           else s = s.replace(/,/g, ".");
           s = s.replace(/[^0-9.-]+/g, "");
           const n = parseFloat(s);
           return isFinite(n) ? n : 0;
+        };
+
+        const extractBudgetRaw = (
+          obj: Record<string, unknown> | null | undefined
+        ): MapPoint["budget"] | undefined => {
+          if (!obj) return undefined;
+          const candidates = [
+            obj["budget"],
+            obj["cost"],
+            obj["estimatedBudget"],
+            obj["dayBudget"],
+            obj["price"],
+          ];
+          for (const c of candidates) {
+            if (c !== null && c !== undefined) return c as MapPoint["budget"];
+          }
+          return undefined;
         };
 
         const extractSource = (d: unknown): string | undefined => {
@@ -68,7 +87,11 @@ const ChatBox: React.FC<ChatBoxProps> = ({ setMapData }) => {
         if (Array.isArray(jsonData)) {
           const arr = jsonData as unknown[];
           const first = arr[0];
-          if (first && typeof first === "object" && "day" in (first as Record<string, unknown>)) {
+          if (
+            first &&
+            typeof first === "object" &&
+            "day" in (first as Record<string, unknown>)
+          ) {
             // itinerary form
             for (const dayObj of arr) {
               if (!dayObj || typeof dayObj !== "object") continue;
@@ -79,6 +102,8 @@ const ChatBox: React.FC<ChatBoxProps> = ({ setMapData }) => {
               for (const d of dests) {
                 if (!d || typeof d !== "object") continue;
                 const od = d as Record<string, unknown>;
+                const budgetVal =
+                  extractBudgetRaw(od) ?? extractBudgetRaw(dobj);
                 points.push({
                   day: Number(dayNum ?? 0),
                   name: String(od["name"] ?? ""),
@@ -86,6 +111,7 @@ const ChatBox: React.FC<ChatBoxProps> = ({ setMapData }) => {
                   lng: toNumber(od["lng"] ?? od["longitude"] ?? 0),
                   desc: String(od["desc"] ?? od["description"] ?? ""),
                   source: extractSource(od),
+                  budget: budgetVal as MapPoint["budget"],
                 });
               }
             }
@@ -94,6 +120,7 @@ const ChatBox: React.FC<ChatBoxProps> = ({ setMapData }) => {
             for (const item of arr) {
               if (!item || typeof item !== "object") continue;
               const oi = item as Record<string, unknown>;
+              const budgetVal = extractBudgetRaw(oi);
               points.push({
                 day: 1,
                 name: String(oi["name"] ?? ""),
@@ -101,11 +128,13 @@ const ChatBox: React.FC<ChatBoxProps> = ({ setMapData }) => {
                 lng: toNumber(oi["lng"] ?? oi["longitude"] ?? 0),
                 desc: String(oi["desc"] ?? oi["description"] ?? ""),
                 source: extractSource(oi),
+                budget: budgetVal as MapPoint["budget"],
               });
             }
           }
         } else if (jsonData && typeof jsonData === "object") {
           const oj = jsonData as Record<string, unknown>;
+          const budgetVal = extractBudgetRaw(oj);
           points.push({
             day: 1,
             name: String(oj["name"] ?? ""),
@@ -113,6 +142,7 @@ const ChatBox: React.FC<ChatBoxProps> = ({ setMapData }) => {
             lng: toNumber(oj["lng"] ?? oj["longitude"] ?? 0),
             desc: String(oj["desc"] ?? oj["description"] ?? ""),
             source: extractSource(oj),
+            budget: budgetVal as MapPoint["budget"],
           });
         }
 
@@ -122,7 +152,8 @@ const ChatBox: React.FC<ChatBoxProps> = ({ setMapData }) => {
         }
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err ?? "Lỗi khi gọi AI");
+      const msg =
+        err instanceof Error ? err.message : String(err ?? "Lỗi khi gọi AI");
       setError(msg);
       setMessages((prev) => [
         ...prev,
@@ -141,17 +172,37 @@ const ChatBox: React.FC<ChatBoxProps> = ({ setMapData }) => {
   };
 
   return (
-    <div className="flex flex-col h-full bg-white shadow-lg rounded-xl">
-      <div className="p-4 font-bold border-b z-3">Vietnam Journey Bot</div>
+    <div className="flex flex-col h-full bg-[#eee3d7] shadow-lg rounded-xl font-public-sans">
+      {/* Custom scrollbar styles scoped to this component for a smoother, themed scroll */}
+      <style>{`
+        .chat-scrollbar {
+          scrollbar-width: thin;
+          scrollbar-color: rgba(0,77,0,0.7) rgba(0,0,0,0.03);
+          scroll-behavior: smooth;
+        }
+        .chat-scrollbar::-webkit-scrollbar { width: 10px; }
+        .chat-scrollbar::-webkit-scrollbar-track { background: rgba(0,0,0,0.03); border-radius: 10px; }
+        .chat-scrollbar::-webkit-scrollbar-thumb { background: linear-gradient(180deg, rgba(0,77,0,0.95), rgba(0,77,0,0.6)); border-radius: 10px; border: 2px solid rgba(255,255,255,0.6); }
+        .chat-message-smooth { transition: transform 120ms ease, box-shadow 120ms ease; }
+        .chat-message-smooth:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,0.06); }
+      `}</style>
+      <div className="p-4 flex items-center gap-2 font-bold text-[#110a03] z-3 text-3xl border-b border-[#e5cbaf] rounded-tr-lg bg-linear-to-r ">
+        <MapPin className="bg-[#004d00] p-2 rounded-md" color="white" size={36} />
+        Vietnam Journey Bot
+      </div>
 
-      <div ref={listRef} className="flex-1 p-4 overflow-y-scroll space-y-3 my-1">
+      <div
+        ref={listRef}
+        className="flex-1 p-4 overflow-y-scroll space-y-3 my-1 chat-scrollbar pr-2"
+        style={{ WebkitOverflowScrolling: 'touch' }}
+      >
         {messages.map((msg, i) => (
           <div
             key={i}
-            className={`max-w-[85%] p-3 rounded-lg w-fit ${
+            className={`max-w-[85%] p-3 rounded-lg w-fit chat-message-smooth ${
               msg.role === "user"
-                ? "bg-blue-100 self-end ml-auto text-right"
-                : "bg-gray-100 self-start text-left"
+                ? "bg-[#004d00] text-white  self-end ml-auto text-right"
+                : "bg-[#eee3d7] text-[#110a03] border border-[#e5cbaf] self-start text-left"
             }`}
           >
             {msg.role === "assistant" ? (
@@ -168,7 +219,7 @@ const ChatBox: React.FC<ChatBoxProps> = ({ setMapData }) => {
         ))}
 
         {loading && (
-          <div className="p-3 rounded-lg bg-gray-100 w-fit">
+          <div className="p-3 rounded-lg bg-[#eee3d7] w-fit">
             Đang trả lời...
           </div>
         )}
@@ -176,21 +227,21 @@ const ChatBox: React.FC<ChatBoxProps> = ({ setMapData }) => {
         {error && <div className="text-red-500 text-sm">Lỗi: {error}</div>}
       </div>
 
-      <div className="flex p-3 border-t">
+      <div className="flex p-3 border-t border-[#e5cbaf]">
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={onKeyDown}
-          className="flex-1 border rounded-lg px-3 py-2"
+          className="flex-1 border border-[#e5cbaf] rounded-full px-3 py-2  focus:outline-0 h-12"
           placeholder="Hỏi về hành trình du lịch..."
           disabled={loading}
         />
         <button
           onClick={handleSend}
           disabled={loading}
-          className="ml-2 bg-blue-500 text-white px-4 py-2 rounded-lg disabled:opacity-50"
+          className="ml-2 bg-[#004d00] hover:bg-[#004d00]/80 text-white px-3 rounded-full disabled:opacity-50 cursor-pointer active:scale-95"
         >
-          Gửi
+          <SendHorizonal color="white" />
         </button>
       </div>
 

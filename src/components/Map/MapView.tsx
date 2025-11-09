@@ -12,6 +12,15 @@ export type MapPoint = {
   desc?: string;
   source?: string;
   geojson?: GeoJSON.Geometry | GeoJSON.Feature | GeoJSON.FeatureCollection;
+  // optional budget information supplied by the AI. Can be a number (total), a string, or an object
+  // Example forms supported:
+  // { budget: 1200000 }
+  // { budget: { total: 1200000, currency: 'VND', perPerson: 400000 } }
+  // { budget: "1,200,000 VND" }
+  budget?:
+    | number
+    | string
+    | { total?: number; currency?: string; perPerson?: number; note?: string };
 };
 
 interface MapViewProps {
@@ -61,6 +70,47 @@ const MapView: React.FC<MapViewProps> = ({
   // loading state: true while we are fetching boundaries / updating map and when map is moving
   const [mapLoading, setMapLoading] = useState(false);
 
+  // images state for selected place
+  type ImageItem = {
+    id: string;
+    thumb: string;
+    full: string;
+    alt?: string;
+    source?: string;
+    author?: string;
+    authorUrl?: string;
+  };
+
+  const [imageCard, setImageCard] = useState<{
+    srcId: string;
+    placeName: string;
+    loading: boolean;
+    error?: string;
+    images: ImageItem[];
+    weather?: {
+      tempC: number;
+      description: string;
+      icon?: string;
+      humidity?: number;
+      windSpeed?: number;
+    } | null;
+    weatherLoading?: boolean;
+  } | null>(null);
+
+  const imagesCache = useRef(new Map<string, ImageItem[]>());
+  const weatherCache = useRef(
+    new Map<
+      string,
+      {
+        tempC: number;
+        description: string;
+        icon?: string;
+        humidity?: number;
+        windSpeed?: number;
+      }
+    >()
+  );
+
   // group points by day for tab UI
   const daysGroup = React.useMemo(() => {
     const m = new Map<number, MapPoint[]>();
@@ -71,6 +121,135 @@ const MapView: React.FC<MapViewProps> = ({
     });
     return m;
   }, [points]);
+
+  // Parse and collect per-day budgets if the AI provided them in points
+  const parseBudgetValue = (
+    v: unknown
+  ): {
+    amount?: number;
+    currency?: string;
+    perPerson?: number;
+    note?: string;
+  } | null => {
+    if (v === null || v === undefined) return null;
+    if (typeof v === "number") return { amount: v };
+    if (typeof v === "string") {
+      // try to extract numeric value and optional currency
+      const s = String(v).trim();
+      const m = s.match(/([0-9,.\s]+)\s*([A-Za-z₫$]*)/);
+      if (m) {
+        const numStr = m[1].replace(/[,\s]+/g, "").replace(/\.(?=.*\.)/g, "");
+        const amt = Number(numStr);
+        const cur = (m[2] || "").trim() || undefined;
+        return { amount: isFinite(amt) ? amt : undefined, currency: cur };
+      }
+      return null;
+    }
+    if (typeof v === "object") {
+      const o = v as Record<string, unknown>;
+      const total =
+        typeof o["total"] === "number"
+          ? (o["total"] as number)
+          : typeof o["amount"] === "number"
+          ? (o["amount"] as number)
+          : undefined;
+      const currency =
+        typeof o["currency"] === "string"
+          ? (o["currency"] as string)
+          : undefined;
+      const perPerson =
+        typeof o["perPerson"] === "number"
+          ? (o["perPerson"] as number)
+          : undefined;
+      const note =
+        typeof o["note"] === "string" ? (o["note"] as string) : undefined;
+      return { amount: total, currency, perPerson, note };
+    }
+    return null;
+  };
+
+  const dayBudgets = React.useMemo(() => {
+    const m = new Map<
+      number,
+      { amount?: number; currency?: string; perPerson?: number; note?: string }
+    >();
+    for (const p of points) {
+      try {
+        const d = Number(p.day ?? 0);
+        const po = p as unknown as Record<string, unknown>;
+        const candidate =
+          po["budget"] ??
+          po["cost"] ??
+          po["estimatedBudget"] ??
+          po["dayBudget"] ??
+          po["price"];
+        const parsed = parseBudgetValue(candidate);
+        if (parsed && parsed.amount !== undefined) {
+          m.set(d, parsed);
+          continue;
+        }
+        // If the point itself is an object representing a day (rare), try nested keys
+        // (left intentionally permissive to work with a variety of AI outputs)
+      } catch {
+        // ignore parse errors for robustness
+      }
+    }
+    return m;
+  }, [points]);
+
+  const formatBudget = (
+    b:
+      | {
+          amount?: number;
+          currency?: string;
+          perPerson?: number;
+          note?: string;
+        }
+      | undefined
+      | null
+  ) => {
+    if (
+      !b ||
+      b.amount === undefined ||
+      b.amount === null ||
+      Number.isNaN(b.amount)
+    )
+      return null;
+    try {
+      // prefer currency for formatting when known
+      if (
+        b.currency &&
+        (b.currency.toUpperCase() === "VND" || b.currency.includes("₫"))
+      ) {
+        return `${new Intl.NumberFormat("vi-VN").format(b.amount)} ₫${
+          b.perPerson
+            ? ` • /người ${new Intl.NumberFormat("vi-VN").format(b.perPerson)}`
+            : ""
+        }`;
+      }
+      if (b.currency && b.currency.length > 0) {
+        return `${new Intl.NumberFormat("en-US", {
+          style: "currency",
+          currency: b.currency,
+        }).format(b.amount)}${
+          b.perPerson
+            ? ` • /người ${new Intl.NumberFormat("en-US", {
+                style: "currency",
+                currency: b.currency,
+              }).format(b.perPerson)}`
+            : ""
+        }`;
+      }
+      // fallback numeric format (Vietnamese thousands separator)
+      return `${new Intl.NumberFormat("vi-VN").format(b.amount)}${
+        b.perPerson
+          ? ` • /người ${new Intl.NumberFormat("vi-VN").format(b.perPerson)}`
+          : ""
+      }`;
+    } catch {
+      return `${b.amount}${b.currency ? ` ${b.currency}` : ""}`;
+    }
+  };
 
   useEffect(() => {
     if (map.current) return;
@@ -753,6 +932,94 @@ const MapView: React.FC<MapViewProps> = ({
     const srcId = `outline-${p.day ?? 0}-${idx}-${slug(p.name)}`;
     const geom = outlinesRef.current.get(srcId) ?? null;
 
+    // Always trigger image loading for the clicked place (don't only fetch on fallback)
+    try {
+      const cached = imagesCache.current.get(srcId);
+      if (cached) {
+        setImageCard({
+          srcId,
+          placeName: p.name ?? "",
+          loading: false,
+          images: cached,
+          weather: null,
+          weatherLoading: true,
+        });
+      } else {
+        setImageCard({
+          srcId,
+          placeName: p.name ?? "",
+          loading: true,
+          images: [],
+          weather: null,
+          weatherLoading: true,
+        });
+        // use place name with country context to improve matching
+        fetchImagesForPlace(`${p.name ?? ""}, Vietnam`, 8)
+          .then((imgs) => {
+            imagesCache.current.set(srcId, imgs);
+            setImageCard((cur) =>
+              cur && cur.srcId === srcId
+                ? {
+                    ...cur,
+                    loading: false,
+                    images: imgs,
+                    error: imgs.length ? undefined : "Không tìm thấy hình ảnh",
+                  }
+                : cur
+            );
+          })
+          .catch((err) => {
+            setImageCard((cur) =>
+              cur && cur.srcId === srcId
+                ? {
+                    ...cur,
+                    loading: false,
+                    error: String(err ?? "Lỗi khi tải ảnh"),
+                  }
+                : cur
+            );
+          });
+      }
+
+      // trigger weather fetch (by coords)
+      try {
+        const weatherCached = weatherCache.current.get(srcId);
+        if (weatherCached) {
+          setImageCard((cur) =>
+            cur && cur.srcId === srcId
+              ? { ...cur, weather: weatherCached, weatherLoading: false }
+              : cur
+          );
+        } else {
+          setImageCard((cur) =>
+            cur && cur.srcId === srcId
+              ? { ...cur, weather: undefined, weatherLoading: true }
+              : cur
+          );
+          fetchWeatherForPlace(p)
+            .then((w) => {
+              if (w) weatherCache.current.set(srcId, w);
+              setImageCard((cur) =>
+                cur && cur.srcId === srcId
+                  ? { ...cur, weather: w ?? null, weatherLoading: false }
+                  : cur
+              );
+            })
+            .catch(() => {
+              setImageCard((cur) =>
+                cur && cur.srcId === srcId
+                  ? { ...cur, weather: null, weatherLoading: false }
+                  : cur
+              );
+            });
+        }
+      } catch {
+        // ignore
+      }
+    } catch {
+      // ignore
+    }
+
     if (geom) {
       const b = geometryBBox(geom);
       if (b) {
@@ -784,6 +1051,94 @@ const MapView: React.FC<MapViewProps> = ({
       ],
       { padding: 60, maxZoom: 17 }
     );
+
+    // image fetching already triggered above (no-op here)
+  };
+
+  // helper: fetch current weather for a MapPoint using OpenWeatherMap (by lat/lng)
+  const fetchWeatherForPlace = async (p: MapPoint) => {
+    try {
+      const key = import.meta.env.VITE_OPENWEATHERMAP_KEY as string | undefined;
+      if (!key) return null;
+      // ensure we have numeric lat/lng
+      const { lat, lng } = normalizeLatLng(p);
+      const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lng}&units=metric&appid=${key}&lang=vi`;
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (!data) return null;
+      const tempC =
+        typeof data.main?.temp === "number"
+          ? data.main.temp
+          : Number(data.main?.temp ?? NaN);
+      const description =
+        Array.isArray(data.weather) && data.weather[0]
+          ? String(data.weather[0].description ?? "")
+          : "";
+      const icon =
+        Array.isArray(data.weather) && data.weather[0]
+          ? String(data.weather[0].icon ?? "")
+          : undefined;
+      const humidity =
+        typeof data.main?.humidity === "number"
+          ? data.main.humidity
+          : undefined;
+      const windSpeed =
+        typeof data.wind?.speed === "number" ? data.wind.speed : undefined;
+      return { tempC, description, icon, humidity, windSpeed };
+    } catch (err) {
+      console.warn("fetchWeatherForPlace error", err);
+      return null;
+    }
+  };
+
+  // helper: fetch images using Google Custom Search (Images)
+  // Requires two env vars: VITE_GOOGLE_API_KEY and VITE_GOOGLE_CX (search engine id)
+  const fetchImagesForPlace = async (
+    placeName: string,
+    perPage = 6
+  ): Promise<ImageItem[]> => {
+    try {
+      const key = import.meta.env.VITE_GOOGLE_API_KEY as string | undefined;
+      const cx = import.meta.env.VITE_GOOGLE_CX as string | undefined;
+      if (!key || !cx) return [];
+      const q = encodeURIComponent(placeName || "Vietnam");
+      // Google Custom Search JSON API (image search)
+      const url = `https://www.googleapis.com/customsearch/v1?key=${key}&cx=${cx}&q=${q}&searchType=image&num=${perPage}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`Google Image search failed: ${res.status}`);
+      const data = await res.json();
+      if (!data || !Array.isArray(data.items)) return [];
+      const imgs: ImageItem[] = [];
+      for (const it of data.items) {
+        if (!it || typeof it !== "object") continue;
+        const item = it as Record<string, unknown>;
+        const id = String(
+          item["cacheId"] ?? item["link"] ?? Math.random().toString(36).slice(2)
+        );
+        const thumb =
+          typeof item["image"] === "object" && item["image"]
+            ? String(
+                (item["image"] as Record<string, unknown>)["thumbnailLink"] ??
+                  (item["image"] as Record<string, unknown>)["thumbnailUrl"] ??
+                  ""
+              )
+            : "";
+        const full = String(item["link"] ?? "");
+        const alt = String(item["title"] ?? placeName);
+        const source = String(
+          item["image"] && typeof item["image"] === "object"
+            ? (item["image"] as Record<string, unknown>)["contextLink"] ??
+                item["displayLink"]
+            : item["displayLink"] ?? ""
+        );
+        imgs.push({ id, thumb, full, alt, source });
+      }
+      return imgs;
+    } catch (err) {
+      console.warn("fetchImagesForPlace error", err);
+      return [];
+    }
   };
 
   // if points changed and there is only one global point, auto-select all and focus
@@ -829,6 +1184,15 @@ const MapView: React.FC<MapViewProps> = ({
               <div className="text-xs text-gray-400 mt-2">
                 Ngày {points[0].day}
               </div>
+              {(() => {
+                const b = dayBudgets.get(points[0].day);
+                const fb = formatBudget(b);
+                return fb ? (
+                  <div className="mt-2 text-sm font-medium text-gray-700">
+                    Ngân sách: {fb}
+                  </div>
+                ) : null;
+              })()}
               <div className="mt-3 flex gap-2">
                 <button
                   className="flex-1 bg-blue-500 text-white text-xs py-1 rounded"
@@ -846,41 +1210,75 @@ const MapView: React.FC<MapViewProps> = ({
             </div>
           ) : (
             // Multi-day UI...
-            <div className="bg-white shadow-lg rounded-lg border w-72 max-w-xs">
+            <div className="bg-[#eee3d7] border border-[#e5cbaf] shadow-xl rounded-lg w-72 max-w-xs">
               {/* ...header and day buttons... */}
-              <div className="p-2 border-b">
-                <div className="text-sm font-semibold">Hành trình</div>
+              <div className="p-2 border-b border-[#e5cbaf]">
+                <div className="text-sm text-[#110a03] font-semibold">
+                  Hành trình
+                </div>
               </div>
+              <style>{`
+                .chat-scrollbar {
+                  scrollbar-width: thin;
+                  scrollbar-color: rgba(0,77,0,0.7) rgba(0,0,0,0.03);
+                  scroll-behavior: smooth;
+                }
+                .chat-scrollbar::-webkit-scrollbar { width: 10px; }
+                .chat-scrollbar::-webkit-scrollbar-track { background: rgba(0,0,0,0.03); border-radius: 10px; }
+                .chat-scrollbar::-webkit-scrollbar-thumb { background: linear-gradient(180deg, rgba(0,77,0,0.95), rgba(0,77,0,0.6)); border-radius: 10px; border: 2px solid rgba(255,255,255,0.6); }
+                .chat-message-smooth { transition: transform 120ms ease, box-shadow 120ms ease; }
+                .chat-message-smooth:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,0.06); }
+              `}</style>
 
               <div className="p-2 flex flex-wrap gap-2">
                 {dayKeys.map((d) => (
                   <button
                     key={d}
-                    className={`px-2 py-1 rounded text-xs ${
+                    className={`px-2 py-1 rounded text-xs cursor-pointer ${
                       selectedDay === d
-                        ? "bg-blue-500 text-white"
-                        : "bg-gray-100"
+                        ? "bg-[#004d00] text-white"
+                        : "border border-[#e5cbaf] text-[#110a03]"
                     }`}
                     onClick={() => setSelectedDay(d)}
                   >
-                    Ngày {d}
+                    <div className="leading-4 ">Ngày {d}</div>
+                    {(() => {
+                      const bb = dayBudgets.get(d);
+                      const fb2 = formatBudget(bb);
+                      return fb2 ? (
+                        <div
+                          className={`text-[10px] ${
+                            selectedDay === d ? "text-white" : "text-gray-500"
+                          }`}
+                        >
+                          {fb2}
+                        </div>
+                      ) : null;
+                    })()}
                   </button>
                 ))}
               </div>
 
-              <div className="p-2 max-h-40 overflow-auto text-xs">
+              <div className="p-2 max-h-40 overflow-auto text-xs chat-scrollbar">
                 {(() => {
                   const cur =
                     selectedDay === "all"
                       ? dayKeys[0]
                       : (selectedDay as number);
                   const list = daysGroup.get(Number(cur)) ?? [];
+                  const selectedBudget = dayBudgets.get(Number(cur));
+                  const selectedBudgetText = formatBudget(selectedBudget);
                   return (
                     <ul className="space-y-2">
+                      {selectedBudgetText ? (
+                        <li className="absolute user-select-none select-none -bottom-14 bg-[#eee3d7] p-2 text-sm font-medium text-gray-700 border border-[#e5cbaf] rounded">
+                          Ngân sách ngày: {selectedBudgetText}
+                        </li>
+                      ) : null}
                       {list.map((p, i) => (
                         <li
                           key={i}
-                          className="p-2 border rounded cursor-pointer hover:bg-gray-50"
+                          className="p-2 border border-[#e5cbaf] rounded cursor-pointer hover:bg-[#eee3d7]/50"
                           onClick={() => {
                             zoomToPlace(p, i);
                           }}
@@ -895,7 +1293,7 @@ const MapView: React.FC<MapViewProps> = ({
                                 href={p.source}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="text-blue-600 underline text-xs"
+                                className="text-[#004d00] underline text-xs"
                               >
                                 Nguồn
                               </a>
@@ -910,6 +1308,92 @@ const MapView: React.FC<MapViewProps> = ({
             </div>
           )}
         </div>
+
+        {/* Top-right: images card for selected place */}
+        {imageCard && (
+          <div className="absolute top-4 right-4 z-50 w-80 max-w-sm pointer-events-auto">
+            <div className="bg-[#eee3d7] shadow-lg rounded-lg border border-[#e5cbaf] p-3 text-xs">
+              <div className="flex items-start justify-between">
+                <div className="font-semibold text-sm">
+                  Hình: {imageCard.placeName}
+                </div>
+                <button
+                  className="text-gray-500 text-sm ml-2"
+                  onClick={() => setImageCard(null)}
+                >
+                  Đóng
+                </button>
+              </div>
+              <div className="mt-2">
+                {/* Weather block */}
+                {imageCard.weatherLoading ? (
+                  <div className="text-gray-500">Đang tải thời tiết...</div>
+                ) : imageCard.weather ? (
+                  <div className="flex items-center gap-3 mb-2">
+                    {imageCard.weather.icon ? (
+                      <img
+                        src={`https://openweathermap.org/img/wn/${imageCard.weather.icon}@2x.png`}
+                        alt={imageCard.weather.description}
+                        className="w-10 h-10"
+                      />
+                    ) : null}
+                    <div>
+                      <div className="text-sm font-medium">
+                        {Math.round(imageCard.weather.tempC)}°C —{" "}
+                        {imageCard.weather.description}
+                      </div>
+                      <div className="text-[11px] text-gray-500">
+                        Độ ẩm: {imageCard.weather.humidity ?? "—"}% • Gió:{" "}
+                        {imageCard.weather.windSpeed ?? "—"} m/s
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                {/* Images */}
+                {imageCard.loading ? (
+                  <div className="text-gray-500">Đang tải ảnh...</div>
+                ) : imageCard.error ? (
+                  <div className="text-red-500">{imageCard.error}</div>
+                ) : imageCard.images.length === 0 ? (
+                  <div className="text-gray-500">Không có ảnh.</div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    {imageCard.images.map((im) => (
+                      <div key={im.id} className="rounded overflow-hidden">
+                        <a
+                          href={im.source ?? im.full}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          <img
+                            src={im.thumb}
+                            alt={im.alt}
+                            className="w-full h-20 object-cover rounded"
+                          />
+                        </a>
+                        <div className="mt-1 text-[11px] text-gray-700">
+                          {im.alt?.slice(0, 60)}
+                        </div>
+                        <div className="text-[10px] text-gray-500 mt-1">
+                          Nguồn:{" "}
+                          <a
+                            href={im.source}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="underline"
+                          >
+                            Google
+                          </a>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Blocking loading overlay shown while fetching boundaries or when the map is moving */}
         {mapLoading && (
